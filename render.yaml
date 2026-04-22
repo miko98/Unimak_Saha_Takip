@@ -31,4 +31,4 @@ services:
 
 databases:
   - name: unimak-postgres
-    plan: starter
+    plan: basic-256mb
