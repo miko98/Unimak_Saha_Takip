@@ -159,32 +159,3 @@ html, body, #root {
 }
 
 .feed-item:last-child { border-bottom: none; }
-
-.desktop-window-controls {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.desktop-window-btn {
-  width: 30px;
-  height: 30px;
-  border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background: rgba(255, 255, 255, 0.08);
-  color: #e2e8f0;
-  font-size: 14px;
-  font-weight: 800;
-  line-height: 1;
-  cursor: pointer;
-}
-
-.desktop-window-btn:hover {
-  background: rgba(255, 255, 255, 0.18);
-}
-
-.desktop-window-btn.close:hover {
-  background: #dc2626;
-  border-color: #dc2626;
-  color: #fff;
-}

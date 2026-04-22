@@ -1,7 +1,7 @@
 import React, { Suspense, lazy, useEffect, useState } from 'react';
 import { UserCircle } from 'lucide-react';
 import { theme } from './theme';
-import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+import { Navigate, Route, Routes, useNavigate } from 'react-router-dom';
 import ProtectedRoute from './routes/ProtectedRoute';
 import { useAuth } from './auth/AuthContext';
 import { useRemoteConfig } from './remote/RemoteConfigContext';
@@ -19,11 +19,9 @@ function App() {
   const [activeTab, setActiveTab] = useState('aktif_projeler');
   const [shellVisible, setShellVisible] = useState(false);
   const [isDesktopRuntime, setIsDesktopRuntime] = useState(false);
-  const [desktopWindow, setDesktopWindow] = useState(null);
   const [desktopUpdate, setDesktopUpdate] = useState(null);
   const [isInstallingUpdate, setIsInstallingUpdate] = useState(false);
   const navigate = useNavigate();
-  const location = useLocation();
 
   const roleMenus = {
     Yonetici: ['aktif_projeler', 'pano_takip', 'checklist', 'foto_galeri', 'gecmis_projeler', 'fabrika_bakim', 'ayarlar'],
@@ -51,15 +49,9 @@ function App() {
         const { getCurrentWindow } = await import('@tauri-apps/api/window');
         const appWindow = getCurrentWindow();
         await appWindow.isMinimizable();
-        if (!cancelled) {
-          setDesktopWindow(appWindow);
-          setIsDesktopRuntime(true);
-        }
+        if (!cancelled) setIsDesktopRuntime(true);
       } catch {
-        if (!cancelled) {
-          setDesktopWindow(null);
-          setIsDesktopRuntime(false);
-        }
+        if (!cancelled) setIsDesktopRuntime(false);
       }
     })();
     return () => {
@@ -104,45 +96,23 @@ function App() {
     return null;
   };
 
-  const desktopChromeRoutes = ['/login', '/unauthorized', '/update-required'];
-  const showDesktopChrome = isDesktopRuntime && desktopChromeRoutes.includes(location.pathname);
-
   const appShell = (
     <div style={{backgroundColor: theme.bg, minHeight: '100vh', display: 'flex', flexDirection: 'column', fontFamily: theme.font, userSelect: 'none', opacity: shellVisible ? 1 : 0, transform: shellVisible ? 'translateY(0)' : 'translateY(12px)', transition: 'all 280ms ease-out'}}>
       <div style={{position: 'sticky', top: 0, zIndex: 50, backgroundColor: theme.header, padding: '0 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: theme.shadow, height: '64px'}}>
-        <div style={{display: 'flex', alignItems: 'center', height: '100%', flex: 1, minWidth: 0}}>
-          <div data-tauri-drag-region={isDesktopRuntime ? 'true' : undefined} style={{color: theme.accent, fontWeight: '800', fontSize: '20px', marginRight: '40px', display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0}}>
+        <div style={{display: 'flex', alignItems: 'center', height: '100%'}}>
+          <div style={{color: theme.accent, fontWeight: '800', fontSize: '20px', marginRight: '40px', display: 'flex', alignItems: 'center', gap: '8px'}}>
             <div style={{backgroundColor: theme.accent, color: 'white', padding: '4px 8px', borderRadius: '6px', fontSize: '14px'}}>U</div>
             UNIMAK
           </div>
-          <div style={{display: 'flex', height: '100%', flexShrink: 0}}>
+          <div style={{display: 'flex', height: '100%'}}>
             {menus.map((tab) => (
               <button key={tab} onClick={() => setActiveTab(tab)} style={{height: '100%', padding: '0 20px', border: 'none', backgroundColor: 'transparent', cursor: 'pointer', fontWeight: '600', fontSize: '14px', fontFamily: theme.font, color: activeTab === tab ? '#ffffff' : '#9ca3af', borderBottom: activeTab === tab ? `3px solid ${theme.primary}` : '3px solid transparent'}}>
                 {tab.replace('_', ' ').toUpperCase()}
               </button>
             ))}
           </div>
-          {isDesktopRuntime ? (
-            <div
-              data-tauri-drag-region="true"
-              style={{ flex: 1, minWidth: '24px', height: '100%', WebkitAppRegion: 'drag' }}
-            />
-          ) : null}
         </div>
-        <div style={{display: 'flex', alignItems: 'center', gap: '20px', flexShrink: 0}}>
-          {isDesktopRuntime ? (
-            <div className="desktop-window-controls" style={{ WebkitAppRegion: 'no-drag' }}>
-              <button type="button" className="desktop-window-btn" onClick={() => desktopWindow?.minimize()} title="Kucult" aria-label="Kucult">
-                -
-              </button>
-              <button type="button" className="desktop-window-btn" onClick={() => desktopWindow?.toggleMaximize()} title="Buyut" aria-label="Buyut">
-                □
-              </button>
-              <button type="button" className="desktop-window-btn close" onClick={() => desktopWindow?.close()} title="Kapat" aria-label="Kapat">
-                ×
-              </button>
-            </div>
-          ) : null}
+        <div style={{display: 'flex', alignItems: 'center', gap: '20px'}}>
           <div style={{color: 'white', fontSize: '14px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '8px'}}>
             <UserCircle size={18}/> {user?.isim} ({user?.rol})
           </div>
@@ -176,73 +146,22 @@ function App() {
 
   return (
     <Suspense fallback={<div style={{ padding: 24 }}>Yukleniyor...</div>}>
-      {showDesktopChrome ? (
-        <div
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            zIndex: 10000,
-            height: '40px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            padding: '0 12px 0 16px',
-            backgroundColor: theme.header,
-            boxShadow: theme.shadow,
-            fontFamily: theme.font,
-          }}
-        >
-          <div
-            data-tauri-drag-region="true"
-            style={{
-              flex: 1,
-              height: '100%',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '10px',
-              color: theme.accent,
-              fontWeight: 800,
-              fontSize: '15px',
-              userSelect: 'none',
-              WebkitAppRegion: 'drag',
-            }}
-          >
-            <span style={{ backgroundColor: theme.accent, color: 'white', padding: '3px 7px', borderRadius: '6px', fontSize: '12px' }}>U</span>
-            UNIMAK
-          </div>
-          <div className="desktop-window-controls" style={{ WebkitAppRegion: 'no-drag' }}>
-            <button type="button" className="desktop-window-btn" onClick={() => desktopWindow?.minimize()} title="Kucult" aria-label="Kucult">
-              -
-            </button>
-            <button type="button" className="desktop-window-btn" onClick={() => desktopWindow?.toggleMaximize()} title="Buyut" aria-label="Buyut">
-              □
-            </button>
-            <button type="button" className="desktop-window-btn close" onClick={() => desktopWindow?.close()} title="Kapat" aria-label="Kapat">
-              ×
-            </button>
-          </div>
-        </div>
-      ) : null}
-      <div style={{ paddingTop: showDesktopChrome ? 40 : 0, minHeight: '100%' }}>
-        <Routes>
-          <Route path="/login" element={<Login />} />
-          <Route path="/unauthorized" element={<Unauthorized />} />
-          <Route
-            path="/update-required"
-            element={(
-              <div style={{ padding: 24 }}>
-                <h2>Guncelleme gerekli</h2>
-                <p>Bu surum artik desteklenmiyor. Minimum surum: {minSupportedVersion}</p>
-                <p>Durum: {updateLevel}</p>
-              </div>
-            )}
-          />
-          <Route path="/" element={<ProtectedRoute>{appShell}</ProtectedRoute>} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </div>
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route path="/unauthorized" element={<Unauthorized />} />
+        <Route
+          path="/update-required"
+          element={(
+            <div style={{ padding: 24 }}>
+              <h2>Guncelleme gerekli</h2>
+              <p>Bu surum artik desteklenmiyor. Minimum surum: {minSupportedVersion}</p>
+              <p>Durum: {updateLevel}</p>
+            </div>
+          )}
+        />
+        <Route path="/" element={<ProtectedRoute>{appShell}</ProtectedRoute>} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
     </Suspense>
   );
 }
