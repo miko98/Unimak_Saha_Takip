@@ -6,22 +6,30 @@ on:
       - "desktop-v*"
 
 jobs:
-  build-windows-installer:
+  release-desktop:
     runs-on: windows-latest
-    defaults:
-      run:
-        working-directory: frontend
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - name: Install deps
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+      - name: Install frontend deps
         run: npm install
-      - name: Build desktop installer (Tauri)
-        run: npm run desktop:build
-      - name: Upload desktop bundles
-        uses: actions/upload-artifact@v4
+        working-directory: frontend
+      - name: Build and publish Tauri release assets
+        uses: tauri-apps/tauri-action@v0
         with:
-          name: desktop-windows-bundles
-          path: frontend/src-tauri/target/release/bundle
+          tagName: ${{ github.ref_name }}
+          releaseName: "Unimak Desktop ${{ github.ref_name }}"
+          releaseBody: "Unimak desktop installer release."
+          releaseDraft: false
+          prerelease: false
+          projectPath: frontend
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+          TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+          TAURI_UPDATER_PUBLIC_KEY: ${{ secrets.TAURI_UPDATER_PUBLIC_KEY }}
+          TAURI_UPDATER_ENDPOINT: ${{ secrets.TAURI_UPDATER_ENDPOINT }}

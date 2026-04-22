@@ -50,4 +50,38 @@ Desktop tag yayininda:
 
 - Tag formati: `desktop-v*`
 - Workflow: `.github/workflows/release-desktop.yml`
-- Artifact: `desktop-windows-bundles`
+- Workflow, GitHub Release'a `.exe`, `.msi`, updater metadata dosyalarini yukler.
+
+## 7) Auto Update Kurulumu (Onemli)
+
+Uygulama ici otomatik guncelleme icin Tauri updater imzasi gerekir.
+
+### Gerekli GitHub Secrets
+
+Repo -> Settings -> Secrets and variables -> Actions:
+
+- `TAURI_PRIVATE_KEY`
+- `TAURI_KEY_PASSWORD`
+
+Private key olusturmak icin (lokal):
+
+```powershell
+cd C:\Users\bayra\Unimak_Saha_Takip\frontend
+npx tauri signer generate -w ~/.tauri/unimak.key
+```
+
+Bu komut private key ve public key uretir.
+
+- Private key icerigini `TAURI_PRIVATE_KEY` secret olarak ekle.
+- Komutta belirledigin sifreyi `TAURI_KEY_PASSWORD` olarak ekle.
+
+### Public key
+
+Desktop updater plugin'i icin public key degerini CI ortaminda build-time env olarak ver:
+
+- `TAURI_UPDATER_PUBLIC_KEY` (workflow env veya local build env)
+
+Istege bagli endpoint override:
+
+- `TAURI_UPDATER_ENDPOINT`
+  - Varsayilan: `https://github.com/miko98/Unimak_Saha_Takip/releases/latest/download/latest.json`
