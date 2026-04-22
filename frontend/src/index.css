@@ -1,0 +1,6 @@
+body {
+  margin: 0;
+  padding: 0;
+  background-color: #f8fafc; /* Uygulamanın ana rengini açık gri yaptık */
+  font-family: 'Inter', sans-serif;
+}
