@@ -1,0 +1,18 @@
+[package]
+name = "unimak-desktop"
+version = "0.1.0"
+description = "Unimak Saha Takip desktop app"
+authors = ["Unimak"]
+edition = "2021"
+rust-version = "1.77.2"
+
+[build-dependencies]
+tauri-build = { version = "2.0.1", features = [] }
+
+[dependencies]
+serde_json = "1"
+tauri = { version = "2.0.2", features = [] }
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]

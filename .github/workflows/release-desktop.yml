@@ -6,8 +6,8 @@ on:
       - "desktop-v*"
 
 jobs:
-  package-web-desktop-base:
-    runs-on: ubuntu-latest
+  build-windows-installer:
+    runs-on: windows-latest
     defaults:
       run:
         working-directory: frontend
@@ -17,15 +17,11 @@ jobs:
         with:
           node-version: "20"
       - name: Install deps
-        run: npm ci
-      - name: Build web bundle
-        run: npm run build
-      - name: Package desktop base bundle
-        run: |
-          mkdir -p ../desktop_release
-          cp -r dist ../desktop_release/dist
-      - name: Upload desktop base artifact
+        run: npm install
+      - name: Build desktop installer (Tauri)
+        run: npm run desktop:build
+      - name: Upload desktop bundles
         uses: actions/upload-artifact@v4
         with:
-          name: desktop-base-dist
-          path: desktop_release/dist
+          name: desktop-windows-bundles
+          path: frontend/src-tauri/target/release/bundle

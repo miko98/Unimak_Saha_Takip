@@ -60,6 +60,8 @@ Frontend (Render static service):
 
 - Desktop (Tauri/Electron recommended):
   - Build installers from CI on `desktop-v*` tags.
+  - Current project includes Tauri desktop setup under `frontend/src-tauri`.
+  - Desktop build guide: `DESKTOP_SETUP.md`.
   - Publish release assets and auto-update manifest.
 - Mobile (Flutter):
   - Build/store release from CI on `mobile-v*` tags.
