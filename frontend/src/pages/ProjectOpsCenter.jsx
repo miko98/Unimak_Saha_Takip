@@ -9,6 +9,7 @@ import useUnimakToast from '../hooks/useUnimakToast';
 export default function ProjectOpsCenter({ kullanici }) {
   const [workOrders, setWorkOrders] = useState([]);
   const [users, setUsers] = useState([]);
+  const [initialLoading, setInitialLoading] = useState(true);
   const [availableYears, setAvailableYears] = useState([]);
   const [selectedYear, setSelectedYear] = useState('');
   const [selectedWorkOrderId, setSelectedWorkOrderId] = useState('');
@@ -114,16 +115,21 @@ export default function ProjectOpsCenter({ kullanici }) {
   };
 
   useEffect(() => {
+    setInitialLoading(true);
     Promise.all([loadAvailableYears(), loadUsers()])
       .then(([years]) => {
         setLoadError(years.length === 0 ? 'Yıl bilgisi bulunamadı. Tümü ile kayıtlar listeleniyor.' : '');
       })
       .catch(() => setLoadError('Veritabanı bağlantısı sırasında hata oluştu.'));
+    Promise.resolve(loadWorkOrders())
+      .catch(() => setLoadError('İş emirleri yüklenemedi.'))
+      .finally(() => setInitialLoading(false));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
+    if (initialLoading) return;
     loadWorkOrders().catch(() => setLoadError('İş emirleri yüklenemedi.'));
-  }, [selectedYear]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [initialLoading, selectedYear]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!selectedWorkOrder) return;
@@ -216,6 +222,16 @@ export default function ProjectOpsCenter({ kullanici }) {
       },
     });
   };
+
+  if (initialLoading) {
+    return (
+      <div style={{ width: '100%', minHeight: 320, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ padding: '16px 20px', borderRadius: 10, backgroundColor: '#f8fafc', border: `1px solid ${theme.border}`, color: '#64748b', fontWeight: 700 }}>
+          Is emri verileri yukleniyor...
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>

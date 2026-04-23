@@ -10,6 +10,7 @@ function Settings() {
   // --- STATE'LER ---
   const [personeller, setPersoneller] = useState([]);
   const [projeler, setProjeler] = useState([]);
+  const [initialLoading, setInitialLoading] = useState(true);
   const [hataMesaji, setHataMesaji] = useState('');
   const [projeArama, setProjeArama] = useState('');
   const [projeDurumFiltresi, setProjeDurumFiltresi] = useState('Tümü');
@@ -42,6 +43,7 @@ function Settings() {
   };
 
   const fetchData = async () => {
+    setInitialLoading(true);
     try {
       const [personelData, projeData, maintenanceData] = await Promise.all([
         requestJson('/atanabilir_kullanicilar/').catch(() => []),
@@ -58,6 +60,8 @@ function Settings() {
       setPersoneller([]);
       setProjeler([]);
       setHataMesaji(error.message || 'Ayarlar verisi alınamadı.');
+    } finally {
+      setInitialLoading(false);
     }
   };
 
@@ -216,6 +220,16 @@ function Settings() {
   useEffect(() => {
     setProjeSayfa(1);
   }, [projeArama, projeDurumFiltresi]);
+
+  if (initialLoading) {
+    return (
+      <div style={{ width: '100%', minHeight: 320, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ padding: '16px 20px', borderRadius: 10, backgroundColor: '#f8fafc', border: `1px solid ${theme.border}`, color: theme.textMuted, fontWeight: 700 }}>
+          Veriler yukleniyor...
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>
