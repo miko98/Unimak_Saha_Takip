@@ -8,9 +8,11 @@ on:
 jobs:
   release-desktop:
     runs-on: windows-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: "20"
       - name: Install Rust stable
@@ -18,6 +20,12 @@ jobs:
       - name: Install frontend deps
         run: npm install
         working-directory: frontend
+      - name: Configure updater pubkey and artifacts for release
+        working-directory: frontend
+        env:
+          TAURI_UPDATER_PUBLIC_KEY_BODY: ${{ secrets.TAURI_UPDATER_PUBLIC_KEY }}
+        run: |
+          node -e "const fs=require('fs');const p='src-tauri/tauri.conf.json';const j=JSON.parse(fs.readFileSync(p,'utf8'));const k=(process.env.TAURI_UPDATER_PUBLIC_KEY_BODY||'').trim();if(k){if(!k.includes('untrusted comment:')){throw new Error('TAURI_UPDATER_PUBLIC_KEY secret must be the FULL minisign .pub file (first line: untrusted comment: ...)');}j.plugins.updater.pubkey=k;j.bundle.createUpdaterArtifacts=true;}fs.writeFileSync(p,JSON.stringify(j,null,2));"
       - name: Build and publish Tauri release assets
         uses: tauri-apps/tauri-action@v0
         with:
@@ -29,6 +37,9 @@ jobs:
           projectPath: frontend
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Tauri v1 style (some tooling still reads these)
           TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
-          TAURI_UPDATER_PUBLIC_KEY: ${{ secrets.TAURI_UPDATER_PUBLIC_KEY }}
+          # Tauri v2 CLI signing + updater artifacts (required when createUpdaterArtifacts is true)
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
