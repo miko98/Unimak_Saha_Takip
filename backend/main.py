@@ -15,7 +15,7 @@ from fastapi.responses import JSONResponse, FileResponse
 from datetime import datetime
 import json
 from sqlalchemy import text
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, ProgrammingError
 from auth.deps import (
     ROLE_MUDUR,
     ROLE_SAHA,
@@ -439,27 +439,42 @@ def _now_ts() -> int:
 
 
 def _maintenance_mode_is_on(db: Session) -> bool:
-    row = db.execute(
-        text("SELECT value FROM system_controls WHERE key = 'maintenance_mode' LIMIT 1")
-    ).fetchone()
-    return bool(row and str(row[0]).lower() == "on")
+    try:
+        row = db.execute(
+            text("SELECT value FROM system_controls WHERE key = 'maintenance_mode' LIMIT 1")
+        ).fetchone()
+        return bool(row and str(row[0]).lower() == "on")
+    except ProgrammingError:
+        db.rollback()
+        policy = db.query(models.AppPolicy).filter(models.AppPolicy.platform == "all").first()
+        return bool(policy and policy.maintenance_mode)
 
 
 def _set_maintenance_mode(db: Session, enabled: bool, updated_by: str):
-    db.execute(
-        text(
-            """
-            UPDATE system_controls
-            SET value = :value, updated_at = :updated_at, updated_by = :updated_by
-            WHERE key = 'maintenance_mode'
-            """
-        ),
-        {
-            "value": "on" if enabled else "off",
-            "updated_at": datetime.now().strftime("%d.%m.%Y %H:%M"),
-            "updated_by": updated_by,
-        },
-    )
+    updated_at = datetime.now().strftime("%d.%m.%Y %H:%M")
+    try:
+        db.execute(
+            text(
+                """
+                UPDATE system_controls
+                SET value = :value, updated_at = :updated_at, updated_by = :updated_by
+                WHERE key = 'maintenance_mode'
+                """
+            ),
+            {
+                "value": "on" if enabled else "off",
+                "updated_at": updated_at,
+                "updated_by": updated_by,
+            },
+        )
+    except ProgrammingError:
+        db.rollback()
+
+    policy = db.query(models.AppPolicy).filter(models.AppPolicy.platform == "all").first()
+    if policy:
+        policy.maintenance_mode = 1 if enabled else 0
+        policy.updated_at = updated_at
+        policy.updated_by = updated_by
 
 
 def _extract_role_from_request(request: Request) -> str | None:
