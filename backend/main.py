@@ -537,7 +537,31 @@ def _load_policy(db: Session, platform: str) -> models.AppPolicy:
     fallback = db.query(models.AppPolicy).filter(models.AppPolicy.platform == "all").first()
     if fallback:
         return fallback
-    raise HTTPException(status_code=500, detail="App policy missing")
+    # Fresh databases may have migrated tables but no seed rows yet.
+    # Auto-create a safe default policy so health checks and requests do not crash.
+    created_at = datetime.now().strftime("%d.%m.%Y %H:%M")
+    default_policy = models.AppPolicy(
+        platform="all",
+        min_supported_version="0.0.0",
+        latest_version="1.0.0",
+        force_update=0,
+        maintenance_mode=0,
+        feature_flags="{}",
+        announcement="",
+        updated_at=created_at,
+        updated_by="system",
+    )
+    db.add(default_policy)
+    try:
+        db.commit()
+        db.refresh(default_policy)
+        return default_policy
+    except Exception:
+        db.rollback()
+        recovered = db.query(models.AppPolicy).filter(models.AppPolicy.platform == "all").first()
+        if recovered:
+            return recovered
+        raise HTTPException(status_code=500, detail="App policy missing")
 
 
 def _effective_policy(db: Session, platform: str) -> dict:
@@ -577,6 +601,7 @@ def _compute_update_level(policy: dict, app_version: str) -> str:
 @app.middleware("http")
 async def maintenance_guard(request: Request, call_next):
     exempt_prefixes = (
+        "/health",
         "/kurulum/",
         "/giris/",
         "/auth/refresh",
