@@ -5,6 +5,7 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../core/auth/auth_session.dart';
 import '../core/network/api_client.dart';
+import '../core/offline/offline_read_cache_service.dart';
 import '../config/api_config.dart';
 import '../theme/app_theme.dart';
 import '../widgets/unimak_confirm_dialog.dart';
@@ -96,6 +97,7 @@ class _MainScreenState extends State<MainScreen> {
       final response = await ApiClient.get('/projeler/');
       if (response.statusCode == 200) {
         final List<dynamic> loaded = json.decode(response.body);
+        await OfflineReadCacheService.saveJson('projeler', loaded);
         final String? firstProjectId = loaded.isNotEmpty
             ? loaded.first['id']?.toString()
             : null;
@@ -110,9 +112,27 @@ class _MainScreenState extends State<MainScreen> {
         }
       }
     } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Projeler yüklenemedi!')));
+      final cached = await OfflineReadCacheService.loadJson('projeler');
+      if (cached is List && cached.isNotEmpty) {
+        final String? firstProjectId = cached.first['id']?.toString();
+        if (!mounted) return;
+        setState(() {
+          tumProjeler = cached;
+          _seciliProjeId = _seciliProjeId ?? firstProjectId;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Internet yok. Son kaydedilen projeler gosteriliyor.')),
+        );
+        if (_seciliProjeId != null) {
+          _kontrolListesiniGetir(_seciliProjeId!);
+          _eskiLoglariGetir(_seciliProjeId!);
+          _isEmirleriniGetir(_seciliProjeId!);
+        }
+      } else {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Projeler yüklenemedi!')));
+      }
     }
   }
 
@@ -211,10 +231,21 @@ class _MainScreenState extends State<MainScreen> {
     try {
       final res = await ApiClient.get('/checklist/$projeId');
       if (res.statusCode == 200) {
-        setState(() => _bekleyenIsler = json.decode(res.body));
+        final loaded = json.decode(res.body);
+        await OfflineReadCacheService.saveJson('checklist_$projeId', loaded);
+        setState(() => _bekleyenIsler = loaded);
       }
     } catch (e) {
-      _hataGoster('Kontrol listesi alınamadı.');
+      final cached = await OfflineReadCacheService.loadJson('checklist_$projeId');
+      if (cached is List) {
+        if (!mounted) return;
+        setState(() => _bekleyenIsler = cached);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Internet yok. Son checklist verisi gosteriliyor.')),
+        );
+      } else {
+        _hataGoster('Kontrol listesi alınamadı.');
+      }
     } finally {
       if (mounted) {
         setState(() => _checklistLoading = false);
@@ -273,9 +304,17 @@ class _MainScreenState extends State<MainScreen> {
   Future<void> _eskiLoglariGetir(String projeId) async {
     try {
       final res = await ApiClient.get('/galeri/$projeId');
-      if (res.statusCode == 200)
-        setState(() => _eskiLoglar = json.decode(res.body));
-    } catch (e) {}
+      if (res.statusCode == 200) {
+        final loaded = json.decode(res.body);
+        await OfflineReadCacheService.saveJson('galeri_$projeId', loaded);
+        setState(() => _eskiLoglar = loaded);
+      }
+    } catch (e) {
+      final cached = await OfflineReadCacheService.loadJson('galeri_$projeId');
+      if (cached is List && mounted) {
+        setState(() => _eskiLoglar = cached);
+      }
+    }
   }
 
   Future<void> _isEmirleriniGetir(String projeId) async {
@@ -290,10 +329,20 @@ class _MainScreenState extends State<MainScreen> {
           if (projeNo == null) return false;
           return pid == projeNo || pid?.toString() == projeId;
         }).toList();
+        await OfflineReadCacheService.saveJson('isemri_$projeId', filtreli);
         setState(() => _isEmirleri = filtreli);
       }
     } catch (_) {
-      _hataGoster('İş emirleri alınamadı.');
+      final cached = await OfflineReadCacheService.loadJson('isemri_$projeId');
+      if (cached is List) {
+        if (!mounted) return;
+        setState(() => _isEmirleri = cached);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Internet yok. Son is emri verileri gosteriliyor.')),
+        );
+      } else {
+        _hataGoster('İş emirleri alınamadı.');
+      }
     } finally {
       if (mounted) {
         setState(() => _isEmriLoading = false);

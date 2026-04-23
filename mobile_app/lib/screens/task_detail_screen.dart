@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../core/network/api_client.dart';
+import '../core/offline/offline_read_cache_service.dart';
 import 'gallery_screen.dart';
 import 'login_screen.dart'; // Çıkış yapabilmek için
 import '../theme/app_theme.dart';
@@ -69,6 +70,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
       final response = await ApiClient.get('/checklist/${widget.projeId}');
       if (response.statusCode == 200) {
         final List veriler = json.decode(response.body);
+        await OfflineReadCacheService.saveJson('checklist_${widget.projeId}', veriler);
         setState(() {
           bekleyenIsler = veriler
               .where((islem) => islem['durum'] != 'Tamamlandı')
@@ -79,7 +81,21 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
         setState(() => isLoading = false);
       }
     } catch (e) {
-      setState(() => isLoading = false);
+      final cached = await OfflineReadCacheService.loadJson('checklist_${widget.projeId}');
+      if (cached is List) {
+        if (!mounted) return;
+        setState(() {
+          bekleyenIsler = cached
+              .where((islem) => islem['durum'] != 'Tamamlandı')
+              .toList();
+          isLoading = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Internet yok. Son checklist verisi gosteriliyor.')),
+        );
+      } else {
+        setState(() => isLoading = false);
+      }
     }
   }
 
