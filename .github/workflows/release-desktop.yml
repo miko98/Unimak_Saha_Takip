@@ -24,8 +24,9 @@ jobs:
         working-directory: frontend
         env:
           TAURI_UPDATER_PUBLIC_KEY_BODY: ${{ secrets.TAURI_UPDATER_PUBLIC_KEY }}
+          TAURI_PRIVATE_KEY_BODY: ${{ secrets.TAURI_PRIVATE_KEY }}
         run: |
-          node -e "const fs=require('fs');const p='src-tauri/tauri.conf.json';const j=JSON.parse(fs.readFileSync(p,'utf8'));const k=(process.env.TAURI_UPDATER_PUBLIC_KEY_BODY||'').trim();if(k){if(!k.includes('untrusted comment:')){throw new Error('TAURI_UPDATER_PUBLIC_KEY secret must be the FULL minisign .pub file (first line: untrusted comment: ...)');}j.plugins.updater.pubkey=k;j.bundle.createUpdaterArtifacts=true;}fs.writeFileSync(p,JSON.stringify(j,null,2));"
+          node -e "const fs=require('fs');const p='src-tauri/tauri.conf.json';const j=JSON.parse(fs.readFileSync(p,'utf8'));const pub=(process.env.TAURI_UPDATER_PUBLIC_KEY_BODY||'').trim();const prv=(process.env.TAURI_PRIVATE_KEY_BODY||'').trim();const pubValid=pub.includes('untrusted comment:') && pub.split(/\r?\n/).length>=2;const canSign=prv.length>0;if(pubValid && canSign){j.plugins.updater.pubkey=pub;j.bundle.createUpdaterArtifacts=true;console.log('Updater artifacts enabled.');}else{j.plugins.updater.pubkey='';j.bundle.createUpdaterArtifacts=false;console.log('Updater artifacts disabled (missing/invalid secrets). Building installer only.');}fs.writeFileSync(p,JSON.stringify(j,null,2));"
       - name: Build and publish Tauri release assets
         uses: tauri-apps/tauri-action@v0
         with:
