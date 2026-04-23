@@ -68,6 +68,15 @@ Desktop tag yayininda:
 - Workflow: `.github/workflows/release-desktop.yml`
 - Workflow, GitHub Release'a `.exe`, `.msi`, updater metadata dosyalarini yukler.
 
+### Hızlı tag komutu
+
+Kok klasorde tek komutla desktop release tetiklemek icin:
+
+```powershell
+cd C:\Users\bayra\Unimak_Saha_Takip
+.\release-tag.ps1 -Target desktop -Version 0.1.9
+```
+
 ## 7) Auto Update Kurulumu (Onemli)
 
 Uygulama ici otomatik guncelleme icin Tauri updater imzasi gerekir.
