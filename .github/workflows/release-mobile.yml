@@ -8,6 +8,8 @@ on:
 jobs:
   build-android:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
     defaults:
@@ -29,3 +31,7 @@ jobs:
         with:
           name: mobile-release-apk
           path: mobile_app/build/app/outputs/flutter-apk/app-release.apk
+      - name: Publish GitHub release asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: mobile_app/build/app/outputs/flutter-apk/app-release.apk

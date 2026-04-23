@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../core/auth/auth_session.dart';
 import '../core/network/api_client.dart';
 import '../core/offline/offline_read_cache_service.dart';
+import '../core/remote/mobile_update_service.dart';
 import '../config/api_config.dart';
 import '../theme/app_theme.dart';
 import '../widgets/unimak_confirm_dialog.dart';
@@ -76,6 +77,16 @@ class _MainScreenState extends State<MainScreen> {
     _mevcutFaz = widget.calismaAlani;
     _loadChecklistFilter();
     projeleriGetir();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _checkForRemoteUpdate());
+  }
+
+  Future<void> _checkForRemoteUpdate() async {
+    if (!mounted) return;
+    try {
+      await MobileUpdateService.triggerBackgroundUpdateIfNeeded();
+    } catch (_) {
+      // Sessizce geç; update kontrolü kullanıcı akışını bozmasın.
+    }
   }
 
   Future<void> _loadChecklistFilter() async {

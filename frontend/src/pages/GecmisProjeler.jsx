@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Archive, Search, FileText, CalendarCheck, CheckCircle, BarChart3, Image as ImageIcon, CheckSquare, Layers, X, ListChecks } from 'lucide-react';
 import { theme } from '../theme';
-import { API_BASE_URL } from '../config';
+import { fetchJson } from '../api/http';
 
 function GecmisProjeler() {
   const [projeler, setProjeler] = useState([]);
@@ -18,11 +18,7 @@ function GecmisProjeler() {
   useEffect(() => {
     const fetchGecmisProjeler = async () => {
       try {
-        const response = await fetch(`${API_BASE_URL}/is_emri_kayitlari/`);
-        const data = await response.json();
-        if (!response.ok) {
-          throw new Error(data?.hata || data?.detail || 'Arşiv verileri alınamadı.');
-        }
+        const data = await fetchJson('/is_emri_kayitlari/');
         const safe = Array.isArray(data) ? data : [];
         // Sadece "Tamamlandı" olanları filtrele
         const tamamlananlar = safe.filter(p => p.durum === 'Tamamlandı');
@@ -44,11 +40,7 @@ function GecmisProjeler() {
     setSeciliProje(proje);
     setOzetYukleniyor(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/is_emri_ozeti/${proje.id}`);
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data?.hata || data?.detail || 'Özet alınamadı.');
-      }
+      const data = await fetchJson(`/is_emri_ozeti/${proje.id}`);
       setProjeOzeti(data);
       setHataMesaji('');
     } catch (error) {

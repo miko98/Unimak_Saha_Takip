@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { AlertOctagon, Wrench, CheckCircle, Camera, Activity, FileText, Image as ImageIcon, X, ArrowRight } from 'lucide-react';
 import { theme } from '../theme';
 import { API_BASE_URL } from '../config';
+import { fetchJson } from '../api/http';
 import UnimakConfirmModal from '../components/UnimakConfirmModal';
 import UnimakToast from '../components/UnimakToast';
 import useUnimakToast from '../hooks/useUnimakToast';
@@ -25,19 +26,7 @@ function FabrikaBakim({ kullanici }) {
   const { toastState, showToast, dismissToast } = useUnimakToast();
 
   // --- VERİ ÇEKME ---
-  const requestJson = async (url, options) => {
-    const response = await fetch(`${API_BASE_URL}${url}`, options);
-    let data = null;
-    try {
-      data = await response.json();
-    } catch {
-      data = null;
-    }
-    if (!response.ok) {
-      throw new Error(data?.hata || data?.detail || `${url} başarısız`);
-    }
-    return data;
-  };
+  const requestJson = (url, options) => fetchJson(url, options);
 
   const fetchBakimlar = async () => {
     try {

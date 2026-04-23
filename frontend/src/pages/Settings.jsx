@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Users, UserPlus, Trash2, FolderPlus, FolderKanban, CheckCircle, Power, UserCircle, ShieldAlert } from 'lucide-react';
 import { theme } from '../theme';
-import { API_BASE_URL } from '../config';
+import { fetchJson } from '../api/http';
 import UnimakConfirmModal from '../components/UnimakConfirmModal';
 import UnimakToast from '../components/UnimakToast';
 import useUnimakToast from '../hooks/useUnimakToast';
@@ -28,38 +28,44 @@ function Settings() {
   const [yeniProje, setYeniProje] = useState({ kod: '', name: '', gruplar: '', yonetici: '' });
 
   // --- VERİ ÇEKME ---
-  const requestJson = async (url, options) => {
-    const res = await fetch(`${API_BASE_URL}${url}`, options);
-    let data = null;
-    try {
-      data = await res.json();
-    } catch {
-      data = null;
-    }
-    if (!res.ok) {
-      throw new Error(data?.hata || data?.detail || `${url} çağrısı başarısız`);
-    }
-    return data;
-  };
+  const requestJson = (url, options) => fetchJson(url, options);
 
   const fetchData = async () => {
     setInitialLoading(true);
     try {
-      const [personelData, projeData, maintenanceData] = await Promise.all([
-        requestJson('/atanabilir_kullanicilar/').catch(() => []),
-        requestJson('/is_emri_kayitlari/').catch(() => []),
-        requestJson('/system/maintenance').catch(() => null),
+      const [personelResult, projeResult, maintenanceResult] = await Promise.allSettled([
+        requestJson('/atanabilir_kullanicilar/'),
+        requestJson('/is_emri_kayitlari/'),
+        requestJson('/system/maintenance'),
       ]);
-      setPersoneller(Array.isArray(personelData) ? personelData : []);
-      setProjeler(Array.isArray(projeData) ? projeData : []);
-      if (maintenanceData && typeof maintenanceData.maintenance_mode === 'boolean') {
-        setMaintenanceMode(maintenanceData.maintenance_mode);
+
+      const errors = [];
+
+      if (personelResult.status === 'fulfilled') {
+        setPersoneller(Array.isArray(personelResult.value) ? personelResult.value : []);
+      } else {
+        errors.push(personelResult.reason?.message || 'Personel verisi alinamadi.');
       }
-      setHataMesaji('');
+
+      if (projeResult.status === 'fulfilled') {
+        setProjeler(Array.isArray(projeResult.value) ? projeResult.value : []);
+      } else {
+        errors.push(projeResult.reason?.message || 'Proje verisi alinamadi.');
+      }
+
+      if (maintenanceResult.status === 'fulfilled') {
+        const maintenanceData = maintenanceResult.value;
+        if (maintenanceData && typeof maintenanceData.maintenance_mode === 'boolean') {
+          setMaintenanceMode(maintenanceData.maintenance_mode);
+        }
+      } else {
+        errors.push(maintenanceResult.reason?.message || 'Bakim modu verisi alinamadi.');
+      }
+
+      setHataMesaji(errors[0] || '');
     } catch (error) {
-      setPersoneller([]);
-      setProjeler([]);
-      setHataMesaji(error.message || 'Ayarlar verisi alınamadı.');
+      // Beklenmeyen bir hata olursa mevcut veriyi koru.
+      setHataMesaji(error.message || 'Ayarlar verisi alinamadi.');
     } finally {
       setInitialLoading(false);
     }

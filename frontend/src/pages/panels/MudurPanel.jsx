@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { BarChart3, Archive, ClipboardList, Activity, Clock3, BellRing } from 'lucide-react';
-import { API_BASE_URL } from '../../config';
+import { fetchJson } from '../../api/http';
 import { theme } from '../../theme';
 import GecmisProjeler from '../GecmisProjeler';
 
@@ -16,12 +16,6 @@ export default function MudurPanel({ activeTab, kullanici }) {
   const [entityFocus, setEntityFocus] = useState(null);
 
   useEffect(() => {
-    const fetchJson = async (path) => {
-      const res = await fetch(`${API_BASE_URL}${path}`);
-      if (!res.ok) throw new Error(`${path} alınamadı`);
-      return res.json();
-    };
-
     const load = async () => {
       try {
         const [kpiData, auditData, projectsData, notificationsData] = await Promise.all([
@@ -98,7 +92,7 @@ export default function MudurPanel({ activeTab, kullanici }) {
 
   const markAllNotificationsRead = async () => {
     try {
-      await fetch(`${API_BASE_URL}/yonetim/bildirimler/okundu-tumu`, { method: 'POST' });
+      await fetchJson('/yonetim/bildirimler/okundu-tumu', { method: 'POST' });
       setNotifications((prev) => prev.map((n) => ({ ...n, is_read: 1 })));
     } catch {
       // ignore transient failure
@@ -107,7 +101,7 @@ export default function MudurPanel({ activeTab, kullanici }) {
 
   const markNotificationRead = async (notificationId) => {
     try {
-      await fetch(`${API_BASE_URL}/yonetim/bildirim/${notificationId}/okundu`, { method: 'POST' });
+      await fetchJson(`/yonetim/bildirim/${notificationId}/okundu`, { method: 'POST' });
       setNotifications((prev) =>
         prev.map((n) => (n.id === notificationId ? { ...n, is_read: 1 } : n))
       );

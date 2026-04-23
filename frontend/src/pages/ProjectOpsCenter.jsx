@@ -1,10 +1,14 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { FolderPlus, RefreshCw, Search, UserCog } from 'lucide-react';
-import { API_BASE_URL } from '../config';
+import { fetchJsonWithFallback } from '../api/http';
+import { readCache, writeCache } from '../api/localCache';
 import { theme } from '../theme';
 import UnimakConfirmModal from '../components/UnimakConfirmModal';
 import UnimakToast from '../components/UnimakToast';
 import useUnimakToast from '../hooks/useUnimakToast';
+
+const CACHE_TTL_FAST_MS = 60 * 1000;
+const CACHE_TTL_SLOW_MS = 10 * 60 * 1000;
 
 export default function ProjectOpsCenter({ kullanici }) {
   const [workOrders, setWorkOrders] = useState([]);
@@ -18,6 +22,7 @@ export default function ProjectOpsCenter({ kullanici }) {
   const [workOrderFilter, setWorkOrderFilter] = useState('');
   const [confirmState, setConfirmState] = useState({ open: false });
   const { toastState, showToast, dismissToast } = useUnimakToast();
+  const requestJsonWithFallback = fetchJsonWithFallback;
 
   const [newWorkOrder, setNewWorkOrder] = useState({
     kod: '',
@@ -54,26 +59,6 @@ export default function ProjectOpsCenter({ kullanici }) {
 
   const allUsers = useMemo(() => (Array.isArray(users) ? users : []), [users]);
 
-  const requestJsonWithFallback = async (urls, options) => {
-    let lastError = null;
-    for (const url of urls) {
-      try {
-        const res = await fetch(`${API_BASE_URL}${url}`, options);
-        let data = null;
-        try {
-          data = await res.json();
-        } catch {
-          data = null;
-        }
-        if (res.ok) return { res, data };
-        lastError = new Error(data?.hata || data?.detail || `${url} başarısız`);
-      } catch (error) {
-        lastError = error;
-      }
-    }
-    throw lastError || new Error('Sunucuya erişilemedi.');
-  };
-
   const loadWorkOrders = async () => {
     const yilQuery = selectedYear ? `?yil=${selectedYear}` : '';
     const { data } = await requestJsonWithFallback([
@@ -82,6 +67,7 @@ export default function ProjectOpsCenter({ kullanici }) {
     ]);
     const safe = Array.isArray(data) ? data : [];
     setWorkOrders(safe);
+    writeCache(`ops_workorders_${selectedYear || 'all'}`, safe);
     if (!selectedWorkOrderId && safe.length > 0) {
       setSelectedWorkOrderId(safe[0].id.toString());
     }
@@ -94,6 +80,7 @@ export default function ProjectOpsCenter({ kullanici }) {
     const safe = Array.isArray(data) ? data : [];
     const years = (yearsFromMeta || [...new Set(safe.map((w) => Number(w.yil)).filter(Boolean))]).sort((a, b) => b - a);
     setAvailableYears(years);
+    writeCache('ops_available_years', years);
     if (!selectedYear && years.length > 0) {
       setSelectedYear(String(years[0]));
       setNewWorkOrder((prev) => ({ ...prev, yil: String(years[0]) }));
@@ -106,15 +93,37 @@ export default function ProjectOpsCenter({ kullanici }) {
       const { data } = await requestJsonWithFallback(['/atanabilir_kullanicilar/', '/kullanicilar/']);
       const safe = Array.isArray(data) ? data : [];
       setUsers(safe);
+      writeCache('ops_users', safe);
       return safe;
     } catch {
-      // Sef rolünde bu endpoint 403 dönebiliyor; ekranı kilitlemeyelim.
-      setUsers([]);
+      // Sef rolünde bu endpoint 403 dönebiliyor; mevcut kullanıcı listesini koruyalım.
       return [];
     }
   };
 
   useEffect(() => {
+    const cachedYears = readCache('ops_available_years', [], CACHE_TTL_SLOW_MS);
+    const cachedUsers = readCache('ops_users', [], CACHE_TTL_FAST_MS);
+    const cachedWorkOrders = readCache('ops_workorders_all', [], CACHE_TTL_FAST_MS);
+    if (Array.isArray(cachedYears) && cachedYears.length > 0) {
+      setAvailableYears(cachedYears);
+      if (!selectedYear) {
+        const firstYear = String(cachedYears[0]);
+        setSelectedYear(firstYear);
+        setNewWorkOrder((prev) => ({ ...prev, yil: firstYear }));
+      }
+    }
+    if (Array.isArray(cachedUsers) && cachedUsers.length > 0) {
+      setUsers(cachedUsers);
+    }
+    if (Array.isArray(cachedWorkOrders) && cachedWorkOrders.length > 0) {
+      setWorkOrders(cachedWorkOrders);
+      if (!selectedWorkOrderId) {
+        setSelectedWorkOrderId(String(cachedWorkOrders[0]?.id || ''));
+      }
+      setInitialLoading(false);
+    }
+
     setInitialLoading(true);
     Promise.all([loadAvailableYears(), loadUsers()])
       .then(([years]) => {
@@ -128,6 +137,10 @@ export default function ProjectOpsCenter({ kullanici }) {
 
   useEffect(() => {
     if (initialLoading) return;
+    const cachedByYear = readCache(`ops_workorders_${selectedYear || 'all'}`, [], CACHE_TTL_FAST_MS);
+    if (Array.isArray(cachedByYear) && cachedByYear.length > 0) {
+      setWorkOrders(cachedByYear);
+    }
     loadWorkOrders().catch(() => setLoadError('İş emirleri yüklenemedi.'));
   }, [initialLoading, selectedYear]); // eslint-disable-line react-hooks/exhaustive-deps
 

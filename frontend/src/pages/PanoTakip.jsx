@@ -1,9 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { CheckCircle, FileText } from 'lucide-react';
 import { theme } from '../theme';
-import { API_BASE_URL } from '../config';
+import { fetchJson } from '../api/http';
+import { readCache, writeCache } from '../api/localCache';
 import UnimakToast from '../components/UnimakToast';
 import useUnimakToast from '../hooks/useUnimakToast';
+
+const CACHE_TTL_FAST_MS = 60 * 1000;
 
 function PanoTakip() {
   // --- VERİ DURUMLARI ---
@@ -24,14 +27,16 @@ function PanoTakip() {
   // ==============================================================
   const fetchProjeler = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/projeler/`);
-      const data = await response.json();
-      const aktifProjeler = data.filter(p => p.durum === 'Aktif');
+      const data = await fetchJson('/projeler/');
+      const aktifProjeler = (Array.isArray(data) ? data : []).filter(p => p.durum === 'Aktif');
       setProjeler(aktifProjeler);
+      writeCache('pano_projeler', aktifProjeler);
       if (aktifProjeler.length > 0 && !seciliProjeId) {
         setSeciliProjeId(aktifProjeler[0].id.toString());
       }
-    } catch (error) { console.error("Proje API Hatası:", error); }
+    } catch (error) {
+      console.error("Proje API Hatasi:", error);
+    }
   };
 
   // ==============================================================
@@ -39,17 +44,32 @@ function PanoTakip() {
   // ==============================================================
   const fetchPanolar = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/panolar/`);
-      const data = await response.json();
-      setPanolar(data.reverse()); // En son eklenen en üstte
+      const data = await fetchJson('/panolar/');
+      const safe = Array.isArray(data) ? data : [];
+      const next = [...safe].reverse();
+      setPanolar(next); // En son eklenen en üstte
+      writeCache('pano_listesi', next);
+    } catch (error) {
+      console.error("Pano API Hatasi:", error);
+    } finally {
       setLoading(false);
-    } catch (error) { console.error("Pano API Hatası:", error); }
+    }
   };
 
   useEffect(() => {
+    const cachedProjeler = readCache('pano_projeler', [], CACHE_TTL_FAST_MS);
+    const cachedPanolar = readCache('pano_listesi', [], CACHE_TTL_FAST_MS);
+    if (Array.isArray(cachedProjeler) && cachedProjeler.length > 0) {
+      setProjeler(cachedProjeler);
+      setSeciliProjeId((prev) => prev || cachedProjeler[0].id.toString());
+    }
+    if (Array.isArray(cachedPanolar) && cachedPanolar.length > 0) {
+      setPanolar(cachedPanolar);
+      setLoading(false);
+    }
     fetchProjeler();
     fetchPanolar();
-    const interval = setInterval(fetchPanolar, 5000); // Tabloyu canlı tut
+    const interval = setInterval(fetchPanolar, 10000); // Sessiz arkaplan senkronizasyonu
     return () => clearInterval(interval);
   }, []);
 
@@ -80,7 +100,7 @@ function PanoTakip() {
       formData.append('notlar', yeniPano.not);
       formData.append('durumu', yeniPano.durumu);
 
-      await fetch(`${API_BASE_URL}/yeni_pano/`, { method: 'POST', body: formData });
+      await fetchJson('/yeni_pano/', { method: 'POST', body: formData });
       
       // Kayıt başarılıysa formu temizle ve listeyi güncelle
       setYeniPano({ grubu: 'ELEKTRİK DEVRE ŞEMASI', panoNo: '', olcu: '', toplayan: '', baslangic: '', bitis: '', teslim: '', not: '', durumu: 'Planlandı' });

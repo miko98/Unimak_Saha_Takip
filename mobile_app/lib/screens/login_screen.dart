@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import '../core/auth/auth_session.dart';
 import '../config/api_config.dart';
 import 'main_screen.dart'; // Giriş başarılı olunca geçilecek ekran
@@ -25,6 +27,55 @@ class _LoginScreenState extends State<LoginScreen> {
   String get _istenenFaz =>
       _seciliAlan == 'Dış Montaj' ? 'Dış Montaj' : 'İç Montaj';
 
+  Future<(int statusCode, Map<String, dynamic> data)> _mobilGirisIstek(
+    String path,
+    String kullaniciAdi,
+    String sifre,
+  ) async {
+    final url = Uri.parse('$apiBaseUrl$path');
+    final request = http.MultipartRequest('POST', url);
+    request.fields['kullanici_adi'] = kullaniciAdi;
+    request.fields['sifre'] = sifre;
+    request.fields['calisma_alani'] = _istenenFaz;
+
+    final response = await request.send().timeout(const Duration(seconds: 20));
+    final responseData = await response.stream.bytesToString();
+    Map<String, dynamic> data;
+    try {
+      data = json.decode(responseData) as Map<String, dynamic>;
+    } catch (_) {
+      data = {
+        'hata': responseData.isEmpty
+            ? 'Sunucu yaniti bos geldi.'
+            : 'Sunucu yaniti okunamadi (${response.statusCode}).',
+      };
+    }
+    return (response.statusCode, data);
+  }
+
+  Future<(int statusCode, Map<String, dynamic> data)> _mobilGirisRetryli(
+    String path,
+    String kullaniciAdi,
+    String sifre,
+  ) async {
+    const retryableStatuses = {500, 502, 503, 504};
+    Object? lastError;
+    for (var attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        final result = await _mobilGirisIstek(path, kullaniciAdi, sifre);
+        if (!retryableStatuses.contains(result.$1) || attempt == 2) {
+          return result;
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 1200));
+      } catch (e) {
+        lastError = e;
+        if (attempt == 2) rethrow;
+        await Future<void>.delayed(const Duration(milliseconds: 1200));
+      }
+    }
+    throw lastError ?? Exception('Mobil giris denemesi basarisiz.');
+  }
+
   Future<void> _girisYap() async {
     final kullaniciAdi = _kullaniciAdiController.text.trim();
     String sifre = _sifreController.text.trim();
@@ -45,19 +96,27 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _isLoading = true);
 
     try {
-      var url = Uri.parse('$apiBaseUrl/mobil_giris/');
-      var request = http.MultipartRequest('POST', url);
-      request.fields['kullanici_adi'] = kullaniciAdi;
-      request.fields['sifre'] = sifre;
-      request.fields['calisma_alani'] = _istenenFaz;
+      final paths = ['/mobil_giris/', '/mobil_giris', '/giris/', '/giris'];
+      int statusCode = 0;
+      Map<String, dynamic> data = const {};
+      Object? lastError;
 
-      var response = await request.send();
-      var responseData = await response.stream.bytesToString();
-      var data = json.decode(responseData);
+      for (final path in paths) {
+        try {
+          final result = await _mobilGirisRetryli(path, kullaniciAdi, sifre);
+          statusCode = result.$1;
+          data = result.$2;
+          if (statusCode == 200 || statusCode == 400 || statusCode == 401 || statusCode == 403) {
+            break;
+          }
+        } catch (e) {
+          lastError = e;
+        }
+      }
 
-      if (response.statusCode == 200) {
+      if (statusCode == 200) {
         final isim = data['isim'] ?? 'Personel';
-        final yetki = data['yetki'] ?? 'Saha';
+        final yetki = data['yetki'] ?? data['rol'] ?? data['user']?['rol'] ?? 'Saha';
         final calismaAlani = data['calisma_alani'] ?? _istenenFaz;
 
         await AuthSession.save({
@@ -95,12 +154,24 @@ class _LoginScreenState extends State<LoginScreen> {
             },
           ),
         );
+      } else if (statusCode != 0) {
+        if (statusCode >= 500) {
+          _hataMesajiGoster('Sunucu gecici olarak yogun (HTTP $statusCode). Birazdan tekrar deneyin.');
+        } else if (statusCode == 404) {
+          _hataMesajiGoster('Giris servisi bulunamadi (HTTP 404). Sunucu surumu guncel degil olabilir.');
+        } else {
+          _hataMesajiGoster(data['hata'] ?? 'Giriş Başarısız!');
+        }
+      } else if (lastError is TimeoutException) {
+        _hataMesajiGoster('Sunucu gec cevap veriyor. Lutfen tekrar deneyin.');
+      } else if (lastError is SocketException || lastError is http.ClientException) {
+        _hataMesajiGoster('Sunucuya baglanilamadi. Internet/API baglantisini kontrol edin.');
       } else {
-        _hataMesajiGoster(data['hata'] ?? 'Giriş Başarısız!');
+        _hataMesajiGoster('Giris sirasinda beklenmeyen bir hata olustu.');
       }
     } catch (e) {
       _hataMesajiGoster(
-        'Sunucuya bağlanılamadı. Backend\'in çalıştığından emin olun.',
+        'Sunucuya baglanilamadi. Backend\'in calistigindan emin olun.',
       );
     } finally {
       setState(() => _isLoading = false);

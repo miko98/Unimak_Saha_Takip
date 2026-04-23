@@ -6,9 +6,14 @@ import {
 } from 'lucide-react';
 import { theme } from '../theme';
 import { API_BASE_URL } from '../config';
+import { fetchJsonWithFallback } from '../api/http';
+import { readCache, writeCache } from '../api/localCache';
 import UnimakConfirmModal from '../components/UnimakConfirmModal';
 import UnimakToast from '../components/UnimakToast';
 import useUnimakToast from '../hooks/useUnimakToast';
+
+const CACHE_TTL_FAST_MS = 60 * 1000;
+const CACHE_TTL_SLOW_MS = 10 * 60 * 1000;
 
 function Dashboard({ kullanici }) {
   const loadJsPdf = async () => {
@@ -64,6 +69,8 @@ function Dashboard({ kullanici }) {
   const kullaniciYilSecimiRef = useRef(false);
   /** Yıl/proje isteklerinde geciken eski cevabı yok say */
   const fetchProjelerIstekIdRef = useRef(0);
+  /** İş emri isteklerinde geciken eski cevabı yok say */
+  const fetchDataIstekIdRef = useRef(0);
 
   const terminTarihiIsoGun = (raw) => {
     const s = (raw || '').trim();
@@ -76,26 +83,6 @@ function Dashboard({ kullanici }) {
       return `${m[3]}-${mo}-${d}`;
     }
     return null;
-  };
-
-  const requestJsonWithFallback = async (urls, options) => {
-    let lastError = null;
-    for (const url of urls) {
-      try {
-        const response = await fetch(`${API_BASE_URL}${url}`, options);
-        let data = null;
-        try {
-          data = await response.json();
-        } catch {
-          data = null;
-        }
-        if (response.ok) return { response, data };
-        lastError = new Error(data?.hata || data?.detail || `${url} başarısız`);
-      } catch (error) {
-        lastError = error;
-      }
-    }
-    throw lastError || new Error('Sunucuya erişilemedi.');
   };
 
   // ==============================================================
@@ -118,6 +105,7 @@ function Dashboard({ kullanici }) {
         durum: p.durum === 'Aktif' ? 'İç Montaj' : (p.durum === 'Nakliyat' ? 'Dış Montaj' : p.durum)
       }));
       setProjeler(formatliProjeler);
+      writeCache(`dashboard_projeler_${seciliYil || 'all'}`, formatliProjeler);
       setSeciliProjeId((prev) => {
         const prevStr = prev == null ? '' : String(prev);
         if (prevStr && !formatliProjeler.some((p) => String(p.id) === prevStr)) {
@@ -129,14 +117,20 @@ function Dashboard({ kullanici }) {
   };
 
   const fetchData = async () => {
+    const requestId = ++fetchDataIstekIdRef.current;
     try {
       const { data } = await requestJsonWithFallback([`/is_emirleri/${yilQuery}`]);
+      if (requestId !== fetchDataIstekIdRef.current) return;
       const safe = Array.isArray(data) ? data : [];
-      setIsEmirleri([...safe].reverse());
+      const next = [...safe].reverse();
+      setIsEmirleri(next);
+      writeCache(`dashboard_is_emirleri_${seciliYil || 'all'}`, next);
     } catch (error) {
       console.error(error);
     } finally {
-      setLoading(false);
+      if (requestId === fetchDataIstekIdRef.current) {
+        setLoading(false);
+      }
     }
   };
 
@@ -147,6 +141,7 @@ function Dashboard({ kullanici }) {
       const fromList = [...new Set((Array.isArray(data) ? data : []).map((x) => Number(x.yil)).filter(Boolean))];
       const years = (yearsFromMeta || fromList).sort((a, b) => b - a);
       setAvailableYears(years);
+      writeCache('dashboard_available_years', years);
       setSeciliYil((prev) => {
         if (!years.length) return '';
         if (prev !== '') {
@@ -164,11 +159,31 @@ function Dashboard({ kullanici }) {
         return '';
       });
     } catch {
-      setAvailableYears([]);
+      // SWR: hata aninda mevcut yil listesini koru.
     }
   };
 
-  useEffect(() => { fetchYillar(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const cachedYears = readCache('dashboard_available_years', [], CACHE_TTL_SLOW_MS);
+    const cachedProjects = readCache('dashboard_projeler_all', [], CACHE_TTL_FAST_MS);
+    const cachedWorkOrders = readCache('dashboard_is_emirleri_all', [], CACHE_TTL_FAST_MS);
+    if (Array.isArray(cachedYears) && cachedYears.length > 0) {
+      setAvailableYears(cachedYears);
+      if (!kullaniciYilSecimiRef.current && !seciliYil) {
+        yilIlkVarsayilanAtandiRef.current = true;
+        setSeciliYil(String(cachedYears[0]));
+      }
+    }
+    if (Array.isArray(cachedProjects) && cachedProjects.length > 0) {
+      setProjeler(cachedProjects);
+      setSeciliProjeId((prev) => prev || String(cachedProjects[0]?.id || ''));
+    }
+    if (Array.isArray(cachedWorkOrders) && cachedWorkOrders.length > 0) {
+      setIsEmirleri(cachedWorkOrders);
+      setLoading(false);
+    }
+    fetchYillar();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     fetchProjeler();
     fetchData();

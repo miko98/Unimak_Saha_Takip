@@ -1,10 +1,13 @@
-import React, { Suspense, lazy, useEffect, useState } from 'react';
-import { UserCircle } from 'lucide-react';
+import React, { Suspense, lazy, useEffect, useMemo, useState } from 'react';
+import { RefreshCw, UserCircle } from 'lucide-react';
 import { theme } from './theme';
 import { Navigate, Route, Routes, useNavigate } from 'react-router-dom';
 import ProtectedRoute from './routes/ProtectedRoute';
 import { useAuth } from './auth/AuthContext';
 import { useRemoteConfig } from './remote/RemoteConfigContext';
+import { fetchJson } from './api/http';
+import { flushQueuedWrites, getQueuedWriteCount } from './api/writeQueue';
+import { API_BASE_URL } from './config';
 import './App.css';
 
 const Login = lazy(() => import('./pages/Login'));
@@ -21,6 +24,9 @@ function App() {
   const [isDesktopRuntime, setIsDesktopRuntime] = useState(false);
   const [desktopUpdate, setDesktopUpdate] = useState(null);
   const [isInstallingUpdate, setIsInstallingUpdate] = useState(false);
+  const [isPageRefreshing, setIsPageRefreshing] = useState(false);
+  const [panelRefreshTick, setPanelRefreshTick] = useState(0);
+  const [queuedWriteCount, setQueuedWriteCount] = useState(0);
   const navigate = useNavigate();
 
   const roleMenus = {
@@ -75,6 +81,51 @@ function App() {
       });
   }, [isDesktopRuntime]);
 
+  useEffect(() => {
+    const refreshQueueCount = () => setQueuedWriteCount(getQueuedWriteCount());
+    refreshQueueCount();
+    window.addEventListener('unimak-write-queue-changed', refreshQueueCount);
+    return () => window.removeEventListener('unimak-write-queue-changed', refreshQueueCount);
+  }, []);
+
+  const desktopSyncPaths = useMemo(
+    () => [
+      '/meta/yillar',
+      '/is_emri_kayitlari/',
+      '/projeler/',
+      '/is_emirleri/',
+      '/bakimlar/',
+      '/panolar/',
+      '/atanabilir_kullanicilar/',
+    ],
+    []
+  );
+
+  const runDesktopBackgroundSync = async () => {
+    await Promise.all(desktopSyncPaths.map((path) => fetchJson(path).catch(() => null)));
+    await flushQueuedWrites((path, options) => fetch(`${API_BASE_URL}${path}`, options));
+  };
+
+  useEffect(() => {
+    if (!isDesktopRuntime || !user) return undefined;
+    runDesktopBackgroundSync();
+    const timer = setInterval(() => {
+      runDesktopBackgroundSync();
+    }, 45000);
+    return () => clearInterval(timer);
+  }, [isDesktopRuntime, user]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const refreshCurrentPage = async () => {
+    if (isPageRefreshing) return;
+    setIsPageRefreshing(true);
+    try {
+      await runDesktopBackgroundSync();
+      setPanelRefreshTick((v) => v + 1);
+    } finally {
+      setTimeout(() => setIsPageRefreshing(false), 350);
+    }
+  };
+
   const installDesktopUpdate = async () => {
     if (!desktopUpdate || isInstallingUpdate) return;
     setIsInstallingUpdate(true);
@@ -95,6 +146,7 @@ function App() {
     if (user?.rol === 'Mudur') return <MudurPanel activeTab={activeTab} kullanici={user} />;
     return null;
   };
+  const activePanel = rolePanel();
 
   const appShell = (
     <div style={{backgroundColor: theme.bg, minHeight: '100vh', display: 'flex', flexDirection: 'column', fontFamily: theme.font, userSelect: 'none', opacity: shellVisible ? 1 : 0, transform: shellVisible ? 'translateY(0)' : 'translateY(12px)', transition: 'all 280ms ease-out'}}>
@@ -113,6 +165,11 @@ function App() {
           </div>
         </div>
         <div style={{display: 'flex', alignItems: 'center', gap: '20px'}}>
+          {queuedWriteCount > 0 ? (
+            <div style={{ backgroundColor: '#fff7ed', color: '#9a3412', border: '1px solid #fdba74', padding: '4px 10px', borderRadius: 999, fontSize: 12, fontWeight: 800 }}>
+              Bekleyen Senkron: {queuedWriteCount}
+            </div>
+          ) : null}
           <div style={{color: 'white', fontSize: '14px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '8px'}}>
             <UserCircle size={18}/> {user?.isim} ({user?.rol})
           </div>
@@ -138,9 +195,34 @@ function App() {
       ) : null}
       <div style={{padding: '24px', flexGrow: 1, width: '100%'}}>
         <Suspense fallback={<div style={{ padding: 24 }}>Yukleniyor...</div>}>
-          {rolePanel()}
+          {activePanel ? React.cloneElement(activePanel, { key: `${activeTab}-${panelRefreshTick}` }) : null}
         </Suspense>
       </div>
+      <button
+        onClick={refreshCurrentPage}
+        disabled={isPageRefreshing}
+        title="Sayfayi yenile"
+        style={{
+          position: 'fixed',
+          right: 24,
+          bottom: 24,
+          border: 'none',
+          borderRadius: 999,
+          width: 52,
+          height: 52,
+          backgroundColor: theme.primary,
+          color: '#fff',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          boxShadow: '0 10px 24px rgba(2,132,199,0.35)',
+          cursor: isPageRefreshing ? 'not-allowed' : 'pointer',
+          opacity: isPageRefreshing ? 0.75 : 1,
+          zIndex: 120,
+        }}
+      >
+        <RefreshCw size={20} className={isPageRefreshing ? 'unimak-spin' : ''} />
+      </button>
     </div>
   );
 

@@ -1,9 +1,14 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Activity, Camera, Image as ImageIcon, Trash2, X, Factory, Building2 } from 'lucide-react';
 import { API_BASE_URL } from '../config';
+import { fetchJson, normalizeFetchError } from '../api/http';
+import { readCache, writeCache } from '../api/localCache';
 import UnimakConfirmModal from '../components/UnimakConfirmModal';
 import UnimakToast from '../components/UnimakToast';
 import useUnimakToast from '../hooks/useUnimakToast';
+
+const CACHE_TTL_FAST_MS = 60 * 1000;
+const CACHE_TTL_SLOW_MS = 10 * 60 * 1000;
 
 export default function ProjectGallery({ kullanici }) {
   const [availableYears, setAvailableYears] = useState([]);
@@ -20,44 +25,41 @@ export default function ProjectGallery({ kullanici }) {
   const [galeriFiltresi, setGaleriFiltresi] = useState('Tümü');
   const [confirmState, setConfirmState] = useState({ open: false });
   const { toastState, showToast, dismissToast } = useUnimakToast();
+  const projelerRequestIdRef = useRef(0);
+  const galeriRequestIdRef = useRef(0);
 
   const aktifProje = projeler.find((p) => String(p.id) === String(seciliProjeId));
 
-  const requestJson = async (url, options) => {
-    const response = await fetch(`${API_BASE_URL}${url}`, options);
-    let data = null;
-    try {
-      data = await response.json();
-    } catch {
-      data = null;
-    }
-    if (!response.ok) {
-      throw new Error(data?.hata || data?.detail || `${url} başarısız`);
-    }
-    return data;
-  };
+  const requestJson = (url, options) => fetchJson(url, options);
 
   const fetchProjeler = async () => {
+    const requestId = ++projelerRequestIdRef.current;
     try {
       const yilQuery = seciliYil ? `?yil=${seciliYil}` : '';
       const data = await requestJson(`/is_emri_kayitlari/${yilQuery}`);
+      if (requestId !== projelerRequestIdRef.current) return;
       const aktif = (Array.isArray(data) ? data : []).filter((p) => p.durum !== 'Tamamlandı');
       setProjeler(aktif);
+      writeCache(`gallery_projeler_${seciliYil || 'all'}`, aktif);
       if (seciliProjeId && !aktif.some((p) => String(p.id) === String(seciliProjeId))) {
         setSeciliProjeId('');
       }
     } catch (error) {
       console.error(error);
-      setProjeler([]);
+      // SWR: hata aninda mevcut proje listesini koru.
     }
   };
 
   const fetchGaleri = async () => {
+    const requestId = ++galeriRequestIdRef.current;
     setGaleriYukleniyor(true);
     try {
       if (seciliProjeId) {
         const data = await requestJson(`/galeri/${seciliProjeId}`);
-        setFotograflar(Array.isArray(data) ? data : []);
+        if (requestId !== galeriRequestIdRef.current) return;
+        const next = Array.isArray(data) ? data : [];
+        setFotograflar(next);
+        writeCache(`gallery_fotograflar_${seciliProjeId}`, next);
         return;
       }
       if (projeler.length === 0) {
@@ -75,12 +77,17 @@ export default function ProjectGallery({ kullanici }) {
           }));
         })
       );
-      setFotograflar(all.flat());
+      if (requestId !== galeriRequestIdRef.current) return;
+      const next = all.flat();
+      setFotograflar(next);
+      writeCache('gallery_fotograflar_all', next);
     } catch (error) {
       console.error(error);
-      setFotograflar([]);
+      // SWR: hata aninda mevcut galeri verisini koru.
     } finally {
-      setGaleriYukleniyor(false);
+      if (requestId === galeriRequestIdRef.current) {
+        setGaleriYukleniyor(false);
+      }
     }
   };
 
@@ -89,22 +96,50 @@ export default function ProjectGallery({ kullanici }) {
       const data = await requestJson('/meta/yillar');
       const years = Array.isArray(data?.years) ? data.years : [];
       setAvailableYears(years);
+      writeCache('gallery_years', years);
     } catch (error) {
       console.error(error);
-      setAvailableYears([]);
+      // SWR: hata aninda mevcut yil verisini koru.
     }
   };
 
   useEffect(() => {
+    const cachedYears = readCache('gallery_years', [], CACHE_TTL_SLOW_MS);
+    const cachedProjects = readCache('gallery_projeler_all', [], CACHE_TTL_FAST_MS);
+    const cachedAllPhotos = readCache('gallery_fotograflar_all', [], CACHE_TTL_FAST_MS);
+    if (Array.isArray(cachedYears) && cachedYears.length > 0) {
+      setAvailableYears(cachedYears);
+    }
+    if (Array.isArray(cachedProjects) && cachedProjects.length > 0) {
+      setProjeler(cachedProjects);
+      if (!seciliProjeId) {
+        setSeciliProjeId(String(cachedProjects[0]?.id || ''));
+      }
+    }
+    if (Array.isArray(cachedAllPhotos) && cachedAllPhotos.length > 0) {
+      setFotograflar(cachedAllPhotos);
+    }
     fetchYillar();
     fetchProjeler();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
+    const cachedProjectsByYear = readCache(`gallery_projeler_${seciliYil || 'all'}`, [], CACHE_TTL_FAST_MS);
+    if (Array.isArray(cachedProjectsByYear) && cachedProjectsByYear.length > 0) {
+      setProjeler(cachedProjectsByYear);
+    }
     fetchProjeler();
   }, [seciliYil]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
+    const cachedPhotos = readCache(
+      seciliProjeId ? `gallery_fotograflar_${seciliProjeId}` : 'gallery_fotograflar_all',
+      [],
+      CACHE_TTL_FAST_MS
+    );
+    if (Array.isArray(cachedPhotos) && cachedPhotos.length > 0) {
+      setFotograflar(cachedPhotos);
+    }
     fetchGaleri();
   }, [seciliProjeId, projeler]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -118,11 +153,11 @@ export default function ProjectGallery({ kullanici }) {
       formData.append('yukleyen', kullanici?.isim || 'Personel');
       formData.append('file', file);
       formData.append('mevcut_faz', 'İç Montaj');
-      await fetch(`${API_BASE_URL}/foto_yukle/`, { method: 'POST', body: formData });
+      await requestJson('/foto_yukle/', { method: 'POST', body: formData });
       await fetchGaleri();
     } catch (error) {
       console.error(error);
-      showToast('Fotograf yuklenemedi.', 'error');
+      showToast(`Fotograf yuklenemedi: ${normalizeFetchError(error).message}`, 'error');
     } finally {
       setFotoYukleniyor(false);
       e.target.value = null;
@@ -142,11 +177,11 @@ export default function ProjectGallery({ kullanici }) {
         try {
           const formData = new FormData();
           formData.append('foto_id', id);
-          await fetch(`${API_BASE_URL}/foto_sil/`, { method: 'POST', body: formData });
+          await requestJson('/foto_sil/', { method: 'POST', body: formData });
           await fetchGaleri();
         } catch (error) {
           console.error(error);
-          showToast('Fotograf silinemedi.', 'error');
+          showToast(`Fotograf silinemedi: ${normalizeFetchError(error).message}`, 'error');
         } finally {
           setSilinenFotoId(null);
         }

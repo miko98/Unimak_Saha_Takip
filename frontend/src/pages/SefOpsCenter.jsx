@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Activity, ClipboardList, Layers3, Wrench, FolderArchive, Settings2 } from 'lucide-react';
-import { API_BASE_URL } from '../config';
+import { fetchJsonWithFallback } from '../api/http';
 import { theme } from '../theme';
 import Dashboard from './Dashboard';
 import ChecklistManagement from './ChecklistManagement';
@@ -29,17 +29,12 @@ export default function SefOpsCenter({ kullanici }) {
 
   useEffect(() => {
     const fetchWithFallback = async (paths) => {
-      for (const path of paths) {
-        try {
-          const res = await fetch(`${API_BASE_URL}${path}`);
-          if (!res.ok) continue;
-          const data = await res.json();
-          if (Array.isArray(data)) return data;
-        } catch {
-          // try next
-        }
+      try {
+        const { data } = await fetchJsonWithFallback(paths);
+        return Array.isArray(data) ? data : [];
+      } catch {
+        return [];
       }
-      return [];
     };
 
     const fetchStats = async () => {

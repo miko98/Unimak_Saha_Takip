@@ -1,20 +1,25 @@
 import React, { useEffect, useState } from 'react';
-import { API_BASE_URL } from '../config';
+import { fetchJson } from '../api/http';
 
 export default function KPIDashboard() {
   const [kpi, setKpi] = useState(null);
+  const [error, setError] = useState('');
 
   useEffect(() => {
     const fetchKpi = async () => {
-      const res = await fetch(`${API_BASE_URL}/raporlar/kpi`);
-      const data = await res.json();
-      setKpi(data);
+      try {
+        const data = await fetchJson('/raporlar/kpi');
+        setKpi(data);
+        setError('');
+      } catch (err) {
+        setError(err?.message || 'KPI verisi alinamadi.');
+      }
     };
     fetchKpi();
   }, []);
 
   if (!kpi) {
-    return <div style={{ padding: 24 }}>KPI verileri yükleniyor...</div>;
+    return <div style={{ padding: 24 }}>{error || 'KPI verileri yukleniyor...'}</div>;
   }
 
   const cards = [
